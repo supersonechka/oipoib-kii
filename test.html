@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ОиПОИБ — тест по КИИ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,700&family=Manrope:wght@400;550;650;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">ОиПОИБ · КИИ</a>
+      <nav class="nav">
+        <a href="index.html">Теория</a>
+        <a class="active" href="test.html">Тест</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Тест-кликалка</h1>
+      <p>
+        Кликни вариант — сразу видно, верно или нет. Правильный ответ подсвечивается зелёным.
+        Без сервера и БД, результат только в этой вкладке.
+      </p>
+    </section>
+
+    <div class="toolbar">
+      <div class="stats">
+        <div class="pill">Отвечено: <strong id="stat-done">0</strong> / <span id="stat-total">0</span></div>
+        <div class="pill">Верно: <strong id="stat-ok">0</strong></div>
+        <div class="pill">Ошибки: <strong id="stat-bad">0</strong></div>
+        <div class="pill">Точность: <strong id="stat-pct">—</strong></div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn ghost" id="btn-shuffle" type="button">Перемешать</button>
+        <button class="btn" id="btn-reset" type="button">Сбросить</button>
+      </div>
+    </div>
+
+    <div class="filters" id="filters">
+      <button class="chip active" data-cat="all" type="button">Все</button>
+      <button class="chip" data-cat="содержание" type="button">Содержание</button>
+      <button class="chip" data-cat="различение" type="button">Различение</button>
+      <button class="chip" data-cat="даты" type="button">Даты</button>
+    </div>
+
+    <div id="quiz"></div>
+
+    <p class="footer">
+      Подсказка: если путаешь номера — сначала пройди фильтр «Различение».
+      Теория: <a href="index.html">на соседней странице</a>.
+    </p>
+  </main>
+
+  <script src="quiz-data.js"></script>
+  <script>
+    (function () {
+      const letters = ["а", "б", "в", "г"];
+      let filter = "all";
+      let order = [];
+      const state = {}; // id -> { chosen, correct }
+
+      const elQuiz = document.getElementById("quiz");
+      const elDone = document.getElementById("stat-done");
+      const elTotal = document.getElementById("stat-total");
+      const elOk = document.getElementById("stat-ok");
+      const elBad = document.getElementById("stat-bad");
+      const elPct = document.getElementById("stat-pct");
+
+      function filtered() {
+        return window.QUIZ.filter((q) => filter === "all" || q.cat === filter);
+      }
+
+      function rebuildOrder(shuffle) {
+        order = filtered().map((q) => q.id);
+        if (shuffle) {
+          for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+          }
+        }
+      }
+
+      function updateStats() {
+        const visible = new Set(order);
+        let done = 0, ok = 0, bad = 0;
+        for (const id of visible) {
+          const s = state[id];
+          if (!s) continue;
+          done++;
+          if (s.correct) ok++;
+          else bad++;
+        }
+        elDone.textContent = String(done);
+        elTotal.textContent = String(order.length);
+        elOk.textContent = String(ok);
+        elBad.textContent = String(bad);
+        elPct.textContent = done ? Math.round((ok / done) * 100) + "%" : "—";
+      }
+
+      function render() {
+        const byId = Object.fromEntries(window.QUIZ.map((q) => [q.id, q]));
+        elQuiz.innerHTML = "";
+
+        order.forEach((id, idx) => {
+          const item = byId[id];
+          const answered = state[id];
+
+          const card = document.createElement("article");
+          card.className = "q";
+          card.dataset.id = String(id);
+
+          const head = document.createElement("div");
+          head.className = "q-head";
+          head.innerHTML =
+            `<span class="q-num">Вопрос ${idx + 1} · №${id}</span>` +
+            `<span class="q-cat">${item.cat}</span>`;
+          card.appendChild(head);
+
+          const title = document.createElement("h3");
+          title.textContent = item.q;
+          card.appendChild(title);
+
+          const opts = document.createElement("div");
+          opts.className = "options";
+
+          item.options.forEach((text, oi) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "opt";
+            btn.textContent = letters[oi] + ") " + text;
+
+            if (answered) {
+              btn.disabled = true;
+              if (oi === item.answer) btn.classList.add(answered.chosen === oi ? "correct" : "missed");
+              if (oi === answered.chosen && answered.chosen !== item.answer) btn.classList.add("wrong");
+            } else {
+              btn.addEventListener("click", () => onChoose(id, oi));
+            }
+            opts.appendChild(btn);
+          });
+
+          card.appendChild(opts);
+
+          const fb = document.createElement("div");
+          fb.className = "feedback";
+          if (answered) {
+            fb.classList.add("show", answered.correct ? "ok" : "bad");
+            fb.textContent = answered.correct
+              ? "Верно"
+              : "Неверно. Правильный ответ: " + letters[item.answer] + ") " + item.options[item.answer];
+          }
+          card.appendChild(fb);
+          elQuiz.appendChild(card);
+        });
+
+        updateStats();
+      }
+
+      function onChoose(id, oi) {
+        const item = window.QUIZ.find((q) => q.id === id);
+        const correct = oi === item.answer;
+        state[id] = { chosen: oi, correct };
+        render();
+        const card = elQuiz.querySelector(`[data-id="${id}"]`);
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      document.getElementById("filters").addEventListener("click", (e) => {
+        const btn = e.target.closest(".chip");
+        if (!btn) return;
+        filter = btn.dataset.cat;
+        document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === btn));
+        rebuildOrder(false);
+        render();
+      });
+
+      document.getElementById("btn-reset").addEventListener("click", () => {
+        for (const id of order) delete state[id];
+        render();
+      });
+
+      document.getElementById("btn-shuffle").addEventListener("click", () => {
+        rebuildOrder(true);
+        render();
+      });
+
+      rebuildOrder(false);
+      render();
+    })();
+  </script>
+</body>
+</html>
